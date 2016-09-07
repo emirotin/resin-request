@@ -145,12 +145,16 @@ prepareOptions = (options = {}) ->
 # @public
 #
 # @description
-# This simply re-exports the `fetch` API to eliminate th eneed of re-configuring
-# it in the other places.
+# This uses the `fetch` API and transforms the response to match
+# the format of the `request` module
 #
 ###
-
 exports.fetch = fetch
+
+normalizedFetch = (url, options) ->
+	fetch(options.url, options)
+	.then (response) ->
+		prepareResponse(response, options)
 
 ###*
 # @summary Perform an HTTP request to Resin.io
@@ -193,14 +197,14 @@ exports.send = (options = {}) ->
 	# case we might cause unnecessary ESOCKETTIMEDOUT errors.
 	options.timeout ?= 30000
 
-	prepareOptions(options).then((options) ->
-		fetch(options.url, options)
-		).then (response) ->
-			if utils.isErrorCode(response.status)
-				utils.getErrorMessageFromResponse(response).then (responseError) ->
-					throw new errors.ResinRequestError(responseError, response.status)
-			else
-				return prepareResponse(response, options)
+	prepareOptions(options)
+	.then (options) ->
+		normalizedFetch(options.url, options)
+	.then (response) ->
+		if utils.isErrorCode(response.status)
+			responseError = utils.getErrorMessageFromResponse(response)
+			throw new errors.ResinRequestError(responseError, response.status)
+		return response
 
 ###*
 # @summary Stream an HTTP response from Resin.io.

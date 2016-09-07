@@ -86,12 +86,12 @@ exports.getAuthorizationHeader = ->
 #    message = utils.getErrorMessageFromResponse(response)
 ###
 exports.getErrorMessageFromResponse = (response) ->
-	response.text().then (body) ->
-		if not body?
-			return 'The request was unsuccessful'
-		if body.error?
-			return body.error.text
-		return body
+	if not response?.body?
+		return 'The request was unsuccessful'
+	{ body } = response
+	if body.error?
+		return body.error.text
+	return body
 
 
 ###*
