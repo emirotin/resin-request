@@ -42,27 +42,44 @@ prepareResponse = (response, options) ->
 	response.request.uri =
 		url: options.url,
 		query: parsedUrl.search?.substring(1) ? null
-		path: parsedUrl.pathname
+		path: parsedUrl.path
 
 	response.statusCode = response.status
-	contentType = response.headers._headers['content-type']
 
-	switch
-		when _.includes(contentType, 'binary/octet-stream')
-			return response
-		when _.includes(contentType, 'application/json')
-			response.json().then (body) ->
-				# rea
-				response.body = body
-				response.from = response.body.from
-				response.method = response.body.method
+	Promise.try ->
+		contentType = response.headers.get('Content-Type')
+
+		switch
+			when _.includes(contentType, 'binary/octet-stream')
 				return response
+			when _.includes(contentType, 'application/json')
+				response.json().then (body) ->
+					# rea
+					response.body = body
+					response.from = response.body.from
+					response.method = response.body.method
+					return response
+			else
+				response.text().then (body) ->
+					response.body = body ? options.body
+					response.from = response.body.from
+					response.method = response.body.method
+					return response
+	.then ->
+		# this is according to the standard
+		if typeof response.headers.keys is 'function'
+			headers = {}
+			for key in response.headers.keys()
+				headers[key] = response.headers.getAll(key)
+			response.headers = headers
+		# https://github.com/bitinn/node-fetch
+		else if typeof response.headers.raw is 'function'
+			response.headers = response.headers.raw()
 		else
-			response.text().then (body) ->
-				response.body = body ? options.body
-				response.from = response.body.from
-				response.method = response.body.method
-				return response
+			throw new Error('Unrecognized implementation of `Headers API`')
+
+		return response
+
 
 prepareOptions = (options = {}) ->
 	_.defaults options,
@@ -232,7 +249,7 @@ exports.stream = (options = {}) ->
 				# TODO: Move this to resin-image-manager
 				console.log download.response.headers
 				process.exit(0)
-				download.mime = download.response.headers._headers['content-type']
+				download.mime = download.response.headers['content-type']
 
 				return download
 
