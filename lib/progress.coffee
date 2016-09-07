@@ -16,16 +16,11 @@ limitations under the License.
 
 _ = require('lodash')
 zlib = require('zlib')
-request = require('request')
 stream = require('stream')
 progress = require('progress-stream')
+request = require('./request')
 rindle = require('rindle')
 utils = require('./utils')
-
-Promise = require('bluebird')
-fetch = require('isomorphic-fetch')
-fetch.Promise = Promise
-request = require('./request')
 
 ###*
 # @summary Get progress stream
@@ -39,7 +34,7 @@ request = require('./request')
 #
 # @example
 # progressStream = getProgressStream response, (state) ->
-#	 console.log(state)
+#   console.log(state)
 #
 # return requestStream.pipe(progressStream).pipe(output)
 ###
@@ -70,9 +65,9 @@ getProgressStream = (response, total, onState = _.noop) ->
 #
 # @example
 # progress.estimate(options).then (stream) ->
-#		stream.pipe(fs.createWriteStream('foo/bar'))
-#		stream.on 'progress', (state) ->
-#			console.log(state)
+#   stream.pipe(fs.createWriteStream('foo/bar'))
+#   stream.on 'progress', (state) ->
+#     console.log(state)
 ###
 exports.estimate = (options) ->
 	# Disable gzip support. We manually handle compression
@@ -85,7 +80,7 @@ exports.estimate = (options) ->
 	# it ourselves, therefore we pass the HTTP header manually.
 	options.headers['Accept-Encoding'] = 'gzip, deflate'
 
-	fetch(options.url, options)
+	request.fetch(options.url, options)
 	.then (response) ->
 		passStream = new stream.PassThrough()
 		response.body.pipe(passStream)

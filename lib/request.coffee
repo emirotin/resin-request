@@ -5,7 +5,7 @@ Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
 
-	 http://www.apache.org/licenses/LICENSE-2.0
+	http://www.apache.org/licenses/LICENSE-2.0
 
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
@@ -17,10 +17,11 @@ limitations under the License.
 ###*
 # @module request
 ###
+
+# https://github.com/bitinn/node-fetch/blob/master/LIMITS.md
 Promise = require('bluebird')
 fetch = require('isomorphic-fetch')
 fetch.Promise = Promise
-# https://github.com/bitinn/node-fetch/blob/master/LIMITS.md
 
 url = require('url')
 _ = require('lodash')
@@ -32,13 +33,13 @@ utils = require('./utils')
 progress = require('./progress')
 
 prepareResponse = (response, options) ->
-	#map fetch response to a requestjs response
+	# map fetch response to a requestjs response
 	response.request = {}
 	response.request.headers = options.headers
 	path = options.url.split('/')[options.url.split('/').length - 1]
 	query = if options.url.includes('?')
-    options.url.split('?')[options.url.split('?').length - 1]
-  else null
+		options.url.split('?')[options.url.split('?').length - 1]
+	else null
 
 	response.request.uri =
 		url: options.url,
@@ -49,33 +50,29 @@ prepareResponse = (response, options) ->
 	contentType = response.headers._headers['content-type']
 
 	switch
-	 when _.includes(contentType, 'binary/octet-stream')
-	  return response
-	 when _.includes(contentType, 'application/json')
-     response.json().then (body) ->
-      # rea
-      response.body = body
-      response.from = response.body.from
-      response.method = response.body.method
-      return response
-	 else
-  	 response.text().then (body) ->
-  		 response.body = body
-  		 response.from = response.body.from
-  		 response.method = response.body.method
-  		 if not body
-  			 response.body = options.body
-  		 else
-  			 response.body = body
-  		 return response
+		when _.includes(contentType, 'binary/octet-stream')
+			return response
+		when _.includes(contentType, 'application/json')
+			response.json().then (body) ->
+				# rea
+				response.body = body
+				response.from = response.body.from
+				response.method = response.body.method
+				return response
+		else
+			response.text().then (body) ->
+				response.body = body ? options.body
+				response.from = response.body.from
+				response.method = response.body.method
+				return response
 
 prepareOptions = (options = {}) ->
 
 	_.defaults options,
 		method: 'GET'
 		headers: {
-			"Content-Type": "application/json",
-			"Accept-Encoding": "compress, gzip"
+			'Content-Type': 'application/json',
+			'Accept-Encoding': 'compress, gzip'
 		},
 		refreshToken: true
 
@@ -129,6 +126,19 @@ prepareOptions = (options = {}) ->
 		return options
 
 ###*
+# @summary The `fetch` API re-export
+# @function
+# @public
+#
+# @description
+# This simply re-exports the `fetch` API to eliminate th eneed of re-configuring
+# it in the other places.
+#
+###
+
+exports.fetch = fetch
+
+###*
 # @summary Perform an HTTP request to Resin.io
 # @function
 # @public
@@ -148,18 +158,18 @@ prepareOptions = (options = {}) ->
 #
 # @example
 # request.send
-#	 method: 'GET'
-#	 baseUrl: 'https://api.resin.io'
-#	 url: '/foo'
+#   method: 'GET'
+#   baseUrl: 'https://api.resin.io'
+#   url: '/foo'
 # .get('body')
 #
 # @example
 # request.send
-#	 method: 'POST'
-#	 baseUrl: 'https://api.resin.io'
-#	 url: '/bar'
-#	 data:
-#		 hello: 'world'
+#   method: 'POST'
+#   baseUrl: 'https://api.resin.io'
+#   url: '/bar'
+#   data:
+#     hello: 'world'
 # .get('body')
 ###
 exports.send = (options = {}) ->
@@ -206,30 +216,32 @@ exports.send = (options = {}) ->
 #
 # @example
 # request.stream
-#	 method: 'GET'
-#	 baseUrl: 'https://img.resin.io'
-#	 url: '/download/foo'
+#   method: 'GET'
+#   baseUrl: 'https://img.resin.io'
+#   url: '/download/foo'
 # .then (stream) ->
-#	 stream.on 'progress', (state) ->
-#		 console.log(state)
+#   stream.on 'progress', (state) ->
+#     console.log(state)
 #
-#	 stream.pipe(fs.createWriteStream('/opt/download'))
+#   stream.pipe(fs.createWriteStream('/opt/download'))
 ###
 exports.stream = (options = {}) ->
 	prepareOptions(options).then(progress.estimate).then (download) ->
-    prepareResponse(download.response, options).then (response) ->
-      download.response = response
+		prepareResponse(download.response, options).then (response) ->
+			download.response = response
 
-  		if not utils.isErrorCode(download.response.status)
+			if not utils.isErrorCode(download.response.status)
 
-  			# TODO: Move this to resin-image-manager
-  			download.mime = download.response.headers._headers['content-type']
+				# TODO: Move this to resin-image-manager
+				console.log download.response.headers
+				process.exit(0)
+				download.mime = download.response.headers._headers['content-type']
 
-  			return download
+				return download
 
-  		# If status code is an error code, interpret
-  		# the body of the request as an error.
-  		return rindle.extract(download).then (data) ->
-  			responseError = data or utils.getErrorMessageFromResponse(download.response)
-  			utils.debugRequest(options, download.response)
-  			throw new errors.ResinRequestError(responseError, download.response.status)
+			# If status code is an error code, interpret
+			# the body of the request as an error.
+			return rindle.extract(download).then (data) ->
+				responseError = data or utils.getErrorMessageFromResponse(download.response)
+				utils.debugRequest(options, download.response)
+				throw new errors.ResinRequestError(responseError, download.response.status)
