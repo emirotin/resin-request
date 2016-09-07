@@ -36,15 +36,13 @@ prepareResponse = (response, options) ->
 	# map fetch response to a requestjs response
 	response.request = {}
 	response.request.headers = options.headers
-	path = options.url.split('/')[options.url.split('/').length - 1]
-	query = if options.url.includes('?')
-		options.url.split('?')[options.url.split('?').length - 1]
-	else null
+
+	parsedUrl = url.parse(options.url)
 
 	response.request.uri =
 		url: options.url,
-		query: query
-		path: "/#{path}"
+		query: parsedUrl.search?.substring(1) ? null
+		path: parsedUrl.pathname
 
 	response.statusCode = response.status
 	contentType = response.headers._headers['content-type']
@@ -67,7 +65,6 @@ prepareResponse = (response, options) ->
 				return response
 
 prepareOptions = (options = {}) ->
-
 	_.defaults options,
 		method: 'GET'
 		headers: {
