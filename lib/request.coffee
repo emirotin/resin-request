@@ -5,7 +5,7 @@ Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
 
-   http://www.apache.org/licenses/LICENSE-2.0
+	http://www.apache.org/licenses/LICENSE-2.0
 
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
@@ -18,9 +18,11 @@ limitations under the License.
 # @module request
 ###
 
+# https://github.com/bitinn/node-fetch/blob/master/LIMITS.md
 Promise = require('bluebird')
-request = require('request')
-requestAsync = Promise.promisify(request)
+fetch = require('isomorphic-fetch')
+fetch.Promise = Promise
+
 url = require('url')
 _ = require('lodash')
 rindle = require('rindle')
@@ -30,15 +32,64 @@ token = require('resin-token')
 utils = require('./utils')
 progress = require('./progress')
 
-prepareOptions = (options = {}) ->
+prepareResponse = (response, options) ->
+	# map fetch response to a requestjs response
+	response.request = {}
+	response.request.headers = options.headers
 
+	parsedUrl = url.parse(options.url)
+
+	response.request.uri =
+		url: options.url,
+		query: parsedUrl.search?.substring(1) ? null
+		path: parsedUrl.path
+
+	response.statusCode = response.status
+
+	Promise.try ->
+		contentType = response.headers.get('Content-Type')
+
+		switch
+			when _.includes(contentType, 'binary/octet-stream')
+				return response
+			when _.includes(contentType, 'application/json')
+				response.json().then (body) ->
+					# rea
+					response.body = body
+					response.from = response.body.from
+					response.method = response.body.method
+					return response
+			else
+				response.text().then (body) ->
+					response.body = body ? options.body
+					response.from = response.body.from
+					response.method = response.body.method
+					return response
+	.then ->
+		# this is according to the standard
+		if typeof response.headers.keys is 'function'
+			headers = {}
+			for key in response.headers.keys()
+				headers[key] = response.headers.getAll(key)
+			response.headers = headers
+		# https://github.com/bitinn/node-fetch
+		else if typeof response.headers.raw is 'function'
+			response.headers = response.headers.raw()
+		else
+			throw new Error('Unrecognized implementation of `Headers API`')
+
+		return response
+
+
+prepareOptions = (options = {}) ->
 	_.defaults options,
 		method: 'GET'
-		json: true
-		strictSSL: true
-		gzip: true
-		headers: {}
+		headers: {
+			'Content-Type': 'application/json',
+			'Accept-Encoding': 'compress, gzip'
+		},
 		refreshToken: true
+
 
 	Promise.try ->
 		return if not options.refreshToken
@@ -47,8 +98,7 @@ prepareOptions = (options = {}) ->
 			return if not shouldUpdateToken
 
 			exports.send
-				url: '/whoami'
-				baseUrl: options.baseUrl
+				url: options.baseUrl + '/whoami'
 				refreshToken: false
 
 			# At this point we're sure there is a saved token,
@@ -58,19 +108,17 @@ prepareOptions = (options = {}) ->
 				name: 'ResinRequestError'
 				statusCode: 401
 			, ->
-
 				return token.get().tap(token.remove).then (sessionToken) ->
 					throw new errors.ResinExpiredToken(sessionToken)
-
 			.get('body')
 			.then(token.set)
 
 	.then(utils.getAuthorizationHeader).then (authorizationHeader) ->
+		# console.log 'authheader', authorizationHeader
 		if authorizationHeader?
 			options.headers.Authorization = authorizationHeader
 
 		if not _.isEmpty(options.apiKey)
-
 			# Using `request` qs object results in dollar signs, or other
 			# special characters used to query our OData API, being escaped
 			# and thus leading to all sort of weird error.
@@ -80,7 +128,33 @@ prepareOptions = (options = {}) ->
 			options.url += if url.parse(options.url).query? then '&' else '?'
 			options.url += "api_key=#{options.apiKey}"
 
+		# fetch doesn't support baseUrl
+		if options.baseUrl
+			options.url = options.baseUrl + options.url
+
+		# check if body is plain text
+		if !utils.isJson(options.body)
+			delete options.headers['Content-Type']
+
+		# console.log('prepareOptions', options)
 		return options
+
+###*
+# @summary The `fetch` API re-export
+# @function
+# @public
+#
+# @description
+# This uses the `fetch` API and transforms the response to match
+# the format of the `request` module
+#
+###
+exports.fetch = fetch
+
+normalizedFetch = (url, options) ->
+	fetch(options.url, options)
+	.then (response) ->
+		prepareResponse(response, options)
 
 ###*
 # @summary Perform an HTTP request to Resin.io
@@ -102,18 +176,18 @@ prepareOptions = (options = {}) ->
 #
 # @example
 # request.send
-# 	method: 'GET'
-# 	baseUrl: 'https://api.resin.io'
-# 	url: '/foo'
+#   method: 'GET'
+#   baseUrl: 'https://api.resin.io'
+#   url: '/foo'
 # .get('body')
 #
 # @example
 # request.send
-# 	method: 'POST'
-# 	baseUrl: 'https://api.resin.io'
-# 	url: '/bar'
-# 	data:
-# 		hello: 'world'
+#   method: 'POST'
+#   baseUrl: 'https://api.resin.io'
+#   url: '/bar'
+#   data:
+#     hello: 'world'
 # .get('body')
 ###
 exports.send = (options = {}) ->
@@ -123,13 +197,13 @@ exports.send = (options = {}) ->
 	# case we might cause unnecessary ESOCKETTIMEDOUT errors.
 	options.timeout ?= 30000
 
-	prepareOptions(options).then(requestAsync).then (response) ->
-
-		if utils.isErrorCode(response.statusCode)
+	prepareOptions(options)
+	.then (options) ->
+		normalizedFetch(options.url, options)
+	.then (response) ->
+		if utils.isErrorCode(response.status)
 			responseError = utils.getErrorMessageFromResponse(response)
-			utils.debugRequest(options, response)
-			throw new errors.ResinRequestError(responseError, response.statusCode)
-
+			throw new errors.ResinRequestError(responseError, response.status)
 		return response
 
 ###*
@@ -160,27 +234,32 @@ exports.send = (options = {}) ->
 #
 # @example
 # request.stream
-# 	method: 'GET'
-# 	baseUrl: 'https://img.resin.io'
-# 	url: '/download/foo'
+#   method: 'GET'
+#   baseUrl: 'https://img.resin.io'
+#   url: '/download/foo'
 # .then (stream) ->
-# 	stream.on 'progress', (state) ->
-# 		console.log(state)
+#   stream.on 'progress', (state) ->
+#     console.log(state)
 #
-# 	stream.pipe(fs.createWriteStream('/opt/download'))
+#   stream.pipe(fs.createWriteStream('/opt/download'))
 ###
 exports.stream = (options = {}) ->
 	prepareOptions(options).then(progress.estimate).then (download) ->
-		if not utils.isErrorCode(download.response.statusCode)
+		prepareResponse(download.response, options).then (response) ->
+			download.response = response
 
-			# TODO: Move this to resin-image-manager
-			download.mime = download.response.headers['content-type']
+			if not utils.isErrorCode(download.response.status)
 
-			return download
+				# TODO: Move this to resin-image-manager
+				console.log download.response.headers
+				process.exit(0)
+				download.mime = download.response.headers['content-type']
 
-		# If status code is an error code, interpret
-		# the body of the request as an error.
-		return rindle.extract(download).then (data) ->
-			responseError = data or utils.getErrorMessageFromResponse(download.response)
-			utils.debugRequest(options, download.response)
-			throw new errors.ResinRequestError(responseError, download.response.statusCode)
+				return download
+
+			# If status code is an error code, interpret
+			# the body of the request as an error.
+			return rindle.extract(download).then (data) ->
+				responseError = data or utils.getErrorMessageFromResponse(download.response)
+				utils.debugRequest(options, download.response)
+				throw new errors.ResinRequestError(responseError, download.response.status)

@@ -5,7 +5,7 @@ Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
 
-	 http://www.apache.org/licenses/LICENSE-2.0
+	http://www.apache.org/licenses/LICENSE-2.0
 
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
@@ -21,6 +21,14 @@ token = require('resin-token')
 # Expose for testing purposes
 exports.TOKEN_REFRESH_INTERVAL = 1 * 1000 * 60 * 60 # 1 hour in milliseconds
 
+
+exports.isJson = (str) ->
+	try
+		JSON.parse(str)
+	catch e
+		return false
+	return true
+
 ###*
 # @summary Determine if the token should be updated
 # @function
@@ -34,8 +42,8 @@ exports.TOKEN_REFRESH_INTERVAL = 1 * 1000 * 60 * 60 # 1 hour in milliseconds
 #
 # @example
 # tokenUtils.shouldUpdateToken().then (shouldUpdateToken) ->
-#		if shouldUpdateToken
-#			console.log('Updating token!')
+#   if shouldUpdateToken
+#     console.log('Updating token!')
 ###
 exports.shouldUpdateToken = ->
 	token.getAge().then (age) ->
@@ -53,8 +61,8 @@ exports.shouldUpdateToken = ->
 #
 # @example
 # utils.getAuthorizationHeader().then (authorizationHeader) ->
-#		headers =
-#			Authorization: authorizationHeader
+#   headers =
+#     Authorization: authorizationHeader
 ###
 exports.getAuthorizationHeader = ->
 	token.get().then (sessionToken) ->
@@ -71,18 +79,20 @@ exports.getAuthorizationHeader = ->
 #
 # @example
 # request
-#		method: 'GET'
-#		url: 'https://foo.bar'
-#	, (error, response) ->
-#		throw error if error?
-#		message = utils.getErrorMessageFromResponse(response)
+#   method: 'GET'
+#   url: 'https://foo.bar'
+#  , (error, response) ->
+#    throw error if error?
+#    message = utils.getErrorMessageFromResponse(response)
 ###
 exports.getErrorMessageFromResponse = (response) ->
-	if not response.body?
+	if not response?.body?
 		return 'The request was unsuccessful'
-	if response.body.error?
-		return response.body.error.text
-	return response.body
+	{ body } = response
+	if body.error?
+		return body.error.text
+	return body
+
 
 ###*
 # @summary Check if the status code represents an error
@@ -94,7 +104,7 @@ exports.getErrorMessageFromResponse = (response) ->
 #
 # @example
 # if utils.isErrorCode(400)
-#		console.log('400 is an error code!')
+#   console.log('400 is an error code!')
 ###
 exports.isErrorCode = (statusCode) ->
 	return statusCode >= 400
@@ -109,7 +119,7 @@ exports.isErrorCode = (statusCode) ->
 #
 # @example
 # if utils.isResponseCompressed(response)
-# 	console.log('The response body is compressed')
+#   console.log('The response body is compressed')
 ###
 exports.isResponseCompressed = (response) ->
 	return response.headers['content-encoding'] is 'gzip'
@@ -146,14 +156,13 @@ exports.getResponseLength = (response) ->
 #
 # @example
 # options = {
-# 	method: 'GET'
+#   method: 'GET'
 #   url: '/foo'
 # }
 #
 # request(options).spread (response) ->
-# 	utils.debugRequest(options, response)
+#   utils.debugRequest(options, response)
 ###
 exports.debugRequest = (options, response) ->
 	return if not process.env.DEBUG
-	options.statusCode = response.statusCode
-	console.error(options)
+	console.error(_.assign(options, statusCode: response.statusCode))
